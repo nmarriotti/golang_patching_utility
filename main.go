@@ -175,6 +175,8 @@ func writeToManifest(md5 string, src string, fileInfo fs.FileInfo) {
 		log.Println(err)
 	} else {
 		fmt.Printf("added %s to manifest.\n", src)
+		// increment number of files included in the patch
+		num_files += 1
 	}
 }
 
@@ -217,6 +219,9 @@ func removeAndCreateDirectory(d string) {
 
 // Builds a patch based on what is specified in manifest.cfg
 func build() {
+	// reset
+	num_files = 0
+
 	if fileExists(MANIFEST_CONFIG) {
 		fmt.Printf("building...\n")
 		// Cleanup any leftover files and directories from previous builds
@@ -234,6 +239,12 @@ func build() {
 
 	} else {
 		fmt.Println("manifest config file not found.")
+	}
+
+	if num_files > 0 {
+		fmt.Printf("build complete. added %d files\n", num_files)
+	} else {
+		fmt.Println("complete. no files found.")
 	}
 	fmt.Println("")
 }
