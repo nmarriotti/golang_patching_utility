@@ -7,7 +7,6 @@ Date: 2/24/2021
 package main
 
 import (
-	"bufio"
 	"fmt"
 	helpers "go_patching/pkg/functions"
 	"go_patching/pkg/osspecific"
@@ -47,24 +46,8 @@ func menu() string {
 	return choice
 }
 
-// Removes drive letter from a Windows path so that a backup
-// of the path can be stored within the patch
-func removeWindowsDriveLetterFromPath(windowsPath string) string {
-	slices := strings.Split(windowsPath, "\\")
-	return strings.Join(slices[1:], "\\")
-}
-
-// Checks if a file or directory exists.
-// Returns a boolean value
-func fileExists(f string) bool {
-	if _, err := os.Stat(f); err == nil {
-		return true // file exists
-	}
-	return false // file does not exist
-}
-
 // Copies file and parent directory structure to an alternate location.
-func backupFile(src string, destfolder string) bool {
+func BackupFile(src string, destfolder string) bool {
 	fileInfo, err := os.Stat(src)
 	if err != nil {
 		fmt.Println(err)
@@ -87,7 +70,7 @@ func backupFile(src string, destfolder string) bool {
 		   Windows is a bit different because of the drive letters */
 
 		// C:\Users\admin\test.txt -> Users\admin\test.txt
-		updated_winpath := removeWindowsDriveLetterFromPath(src)
+		updated_winpath := helpers.RemoveWindowsDriveLetterFromPath(src)
 		// C:\Users\admin\patch\files\Users\admin\test.txt
 		dest = filepath.Join(destfolder, updated_winpath)
 		// C:\Users\admin\
@@ -117,7 +100,7 @@ func backupFile(src string, destfolder string) bool {
 
 // Checks if this line is a file or directory, including children, and
 // calls writeToManifest()
-func analyzeLine(line string) {
+func AnalyzeLine(line string) {
 	fileInfo, err := os.Stat(line)
 	if err != nil {
 		fmt.Println(err)
@@ -128,18 +111,18 @@ func analyzeLine(line string) {
 
 	case mode.IsDir():
 		md5 := "-"
-		writeToManifest(md5, line, fileInfo)
-		scanDir(line)
+		WriteToManifest(md5, line, fileInfo)
+		ScanDir(line)
 
 	case mode.IsRegular():
 		md5, _ := helpers.HashFileMD5(line)
-		writeToManifest(md5, line, fileInfo)
-		backupFile(line, PATCHED_FILES_DIR)
+		WriteToManifest(md5, line, fileInfo)
+		BackupFile(line, PATCHED_FILES_DIR)
 	}
 }
 
 // Finds and checks all contents of a directory
-func scanDir(line string) {
+func ScanDir(line string) {
 	fmt.Printf("scanning %s\n", line)
 	files, err := ioutil.ReadDir(line)
 	if err != nil {
@@ -147,12 +130,12 @@ func scanDir(line string) {
 	}
 	for _, f := range files {
 		// process all children in this directory
-		analyzeLine(filepath.Join(line, f.Name()))
+		AnalyzeLine(filepath.Join(line, f.Name()))
 	}
 }
 
 // Writes information to manifest
-func writeToManifest(md5 string, src string, fileInfo fs.FileInfo) {
+func WriteToManifest(md5 string, src string, fileInfo fs.FileInfo) {
 	lineToPrint := ""
 
 	// Information differs based on OS
@@ -180,49 +163,12 @@ func writeToManifest(md5 string, src string, fileInfo fs.FileInfo) {
 	}
 }
 
-// Reads each line in a file and returns as a string array
-func readFile(filename string) []string {
-	file, err := os.Open(filename)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-	return lines
-}
-
-func removeAndCreateDirectory(d string) {
-	if fileExists(d) {
-		// remove
-		err := os.RemoveAll(d)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	// create
-	os.Mkdir(d, os.ModePerm)
-}
-
 // Builds a patch based on what is specified in manifest.cfg
-func build() {
+func Build() {
 	// reset
 	num_files = 0
 
-	if fileExists(MANIFEST_CONFIG) {
+	if helpers.FileExists(MANIFEST_CONFIG) {
 		fmt.Printf("building...\n")
 		// Cleanup any leftover files and directories from previous builds
 		os.RemoveAll(BACKUP)
@@ -231,10 +177,10 @@ func build() {
 		os.Create(MANIFEST)
 
 		// Get all lines in manifest.cfg
-		lines := readFile(MANIFEST_CONFIG)
+		lines := helpers.ReadFile(MANIFEST_CONFIG)
 		// process each line
 		for _, line := range lines {
-			analyzeLine(line)
+			AnalyzeLine(line)
 		}
 
 	} else {
@@ -250,16 +196,16 @@ func build() {
 }
 
 // Restores a patched file to its unpatched state
-func restore() {
+func Restore() {
 	// reset restore counter
 	num_files = 0
 
 	// read manifest lines
-	if fileExists(MANIFEST) {
+	if helpers.FileExists(MANIFEST) {
 		fmt.Printf("restoring...\n")
-		lines := readFile(MANIFEST)
+		lines := helpers.ReadFile(MANIFEST)
 		for _, line := range lines {
-			_map := stringToMap(line)
+			_map := StringToMap(line)
 			// add src key to point to file stored in backup directory
 			dest := _map["dest"]
 
@@ -270,11 +216,11 @@ func restore() {
 				// builds absolute path to where this file resides in the backup directory
 				// and removes the drive letter to avoid multiple drive references from
 				// appearing in the src path
-				src = filepath.Join(BACKUP, removeWindowsDriveLetterFromPath(dest))
+				src = filepath.Join(BACKUP, helpers.RemoveWindowsDriveLetterFromPath(dest))
 			}
 
-			if fileExists(src) {
-				if hashMismatch(src, dest) {
+			if helpers.FileExists(src) {
+				if HashMismatch(src, dest) {
 					// replace the file
 					fmt.Printf("restoring %s\n", dest)
 					helpers.CopyFile(src, dest)
@@ -297,7 +243,7 @@ func restore() {
 
 // Compares two MD5 hash values and returns true if no match is found
 // otherwise returns false
-func hashMismatch(file1 string, file2 string) bool {
+func HashMismatch(file1 string, file2 string) bool {
 	md5_1, err := helpers.HashFileMD5(file1)
 	if err != nil {
 		return false
@@ -313,19 +259,19 @@ func hashMismatch(file1 string, file2 string) bool {
 }
 
 // Updates files and directories on the filesystem with what is stored in the patch
-func patch() {
+func Patch() {
 	// reset backups every time the system is patched
 	os.RemoveAll(BACKUP)
 
 	// reset patch counter
 	num_files = 0
 
-	if fileExists(MANIFEST) {
+	if helpers.FileExists(MANIFEST) {
 		fmt.Printf("patching...\n")
-		lines := readFile(MANIFEST)
+		lines := helpers.ReadFile(MANIFEST)
 		for _, line := range lines {
-			_map := stringToMap(line)
-			compareOrReplace(_map)
+			_map := StringToMap(line)
+			CompareOrReplace(_map)
 		}
 
 	} else {
@@ -340,7 +286,7 @@ func patch() {
 }
 
 // Parses comma-delimited string into a map
-func stringToMap(line string) map[string]string {
+func StringToMap(line string) map[string]string {
 	data := strings.Split(line, ",")
 
 	m := make(map[string]string)
@@ -360,13 +306,13 @@ func stringToMap(line string) map[string]string {
 }
 
 // Patches files that are missing or have incorrect hash values
-func compareOrReplace(m map[string]string) {
+func CompareOrReplace(m map[string]string) {
 	src := ""
 
 	if GOOS == "linux" {
 		src = filepath.Join(PATCHED_FILES_DIR, m["dest"])
 	} else if GOOS == "windows" {
-		src = filepath.Join(PATCHED_FILES_DIR, removeWindowsDriveLetterFromPath(m["dest"]))
+		src = filepath.Join(PATCHED_FILES_DIR, helpers.RemoveWindowsDriveLetterFromPath(m["dest"]))
 	}
 
 	fileinfo, err := os.Stat(src)
@@ -375,23 +321,23 @@ func compareOrReplace(m map[string]string) {
 		return
 	}
 
-	if !fileExists(m["dest"]) {
+	if !helpers.FileExists(m["dest"]) {
 		// replace the file
 		fmt.Printf("unable to backup %s. this file or directory is not present on the system.\n", m["dest"])
-		patchFile(src, m, fileinfo)
+		PatchFile(src, m, fileinfo)
 	} else {
 		// compare hashes
 		destHash, _ := helpers.HashFileMD5(m["dest"])
 		if m["md5"] != destHash && !fileinfo.IsDir() {
 			// hashes do not match, backup and replace the file
-			backupFile(m["dest"], BACKUP)
-			patchFile(src, m, fileinfo)
+			BackupFile(m["dest"], BACKUP)
+			PatchFile(src, m, fileinfo)
 		}
 	}
 }
 
 // Copies from from the patch to the file system
-func patchFile(src string, m map[string]string, fileinfo fs.FileInfo) {
+func PatchFile(src string, m map[string]string, fileinfo fs.FileInfo) {
 	fmt.Printf("patching %s\n", m["dest"])
 
 	switch mode := fileinfo.Mode(); {
@@ -420,7 +366,7 @@ func patchFile(src string, m map[string]string, fileinfo fs.FileInfo) {
 }
 
 // Returns true or false based on what input the user provided to menu prompts
-func confirmed(userInput string) bool {
+func Confirmed(userInput string) bool {
 	c := false
 	switch userInput {
 	case "y", "Y", "yes", "YES":
@@ -443,22 +389,22 @@ func main() {
 			// Build a patch
 			fmt.Printf("\nProcced with building a patch? ")
 			fmt.Scanln(&choice)
-			if confirmed(choice) {
-				build()
+			if Confirmed(choice) {
+				Build()
 			}
 		case "2":
 			// "Install" the patch
 			fmt.Printf("\nProcced with patching? ")
 			fmt.Scanln(&choice)
-			if confirmed(choice) {
-				patch()
+			if Confirmed(choice) {
+				Patch()
 			}
 		case "3":
 			// Restore files to pre-patched state
 			fmt.Printf("\nProcced with restoring files to their pre-patched state? ")
 			fmt.Scanln(&choice)
-			if confirmed(choice) {
-				restore()
+			if Confirmed(choice) {
+				Restore()
 			}
 		case "4":
 			fmt.Printf("\nBye!\n")
