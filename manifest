@@ -1,0 +1,6 @@
+-,/tmp/testing,1000,1000,0775
+-,/tmp/testing/folder2,1000,1000,0775
+299fa5bc0a2ec866e35b51d01ea29ced,/tmp/testing/folder2/a.txt,1000,1000,0664
+-,/tmp/testing/folder3,1000,1000,0775
+ab9d82b9ae7d7d7256a95efe3447ec78,/tmp/testing/folder3/a.txt,1000,1000,0664
+2434f7dd3bf7fd32d397db78774fea0f,/tmp/testing/t.txt,1000,1000,0664
